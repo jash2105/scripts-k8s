@@ -4,14 +4,12 @@
 # to the git repository so later, secrets can be encrypted.
 #
 
-source ~/envs/cluster.env || exit 1
-source ~/envs/versions.env || exit 1
-source ${SCRIPTS}/cluster-tools.sh || exit 1
+source `dirname "$0"`/scripts-env-init.sh
 
-cd ${CLUSTER_REPO_DIR}
+cd ${CLUSTER_REPO_DIR} &> /dev/null || { echo "No cluster repo dir!"; exit 1; }
 
-echo "Deploying sealed secrets"
-~/scripts/flux-create-helmrel.sh \
+echo "   ${BOLD}Deploying sealed secrets${NORMAL}"
+${SCRIPTS}/flux-create-helmrel.sh \
         "${SS_NAME}" \
         "${SS_VER}" \
         "${SS_RNAME}" \
@@ -29,5 +27,5 @@ sleep 10
 curl --retry 5 --retry-connrefused localhost:8080/v1/cert.pem > pub-sealed-secrets-${CLUSTER_NAME}.pem
 killall kubectl
 
-update_repo "publiec-key"
+update_repo "public-key"
 

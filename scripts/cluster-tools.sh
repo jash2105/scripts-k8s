@@ -10,11 +10,11 @@
 wait_for_ready() {
   WAIT=20
   [[ -z "$1" ]] || { WAIT=$1; }
-  echo "Waiting for the system to be ready"
+  echo "${CYAN}Waiting for the system to be ready${NORMAL}"
   sleep ${WAIT}
   while flux get all -A | grep -q Unknown ; do 
-    date 
-    echo "System not ready yet, waiting ${WAIT}"
+    DATE=`date "+%Y-%m-%d %H:%M:%S"`
+    echo "${CYAN}${BOLD}${DATE} System not ready yet, waiting ${WAIT}${NORMAL}"
     sleep ${WAIT}
   done
 }
@@ -81,12 +81,12 @@ update_chart_ns() {
 # by scripts using pwgen and stored in the cluster.
 # They have to be then provided to the user/admin to allow him to
 # connect and login to the services.
-# All the secrets are stored in ${HOME}/.kube/k8s-secrets
+# All the secrets are stored in ${CONFIG}/k8s-secrets
 # $1 - mandatory SECRET_NAME name of the secret stored
 # $2 - mandatory SECRET_TOKEN the actual secret stored
 update_k8s_secrets() {
-  echo -n "${1}: " >> ${HOME}/.kube/k8s-secrets
-  echo "${2}" >> ${HOME}/.kube/k8s-secrets
+  echo -n "${1}: " >> ${CONFIG}/k8s-secrets
+  echo "${2}" >> ${CONFIG}/k8s-secrets
 }
 
 # Function generates random and secrure token or password, optionally

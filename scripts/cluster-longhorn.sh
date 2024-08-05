@@ -8,9 +8,7 @@
 # configuration encrypted using sealed secrets
 #
 
-source ~/envs/cluster.env || exit 1
-source ~/envs/versions.env || exit 1
-source ${SCRIPTS}/cluster-tools.sh || exit 1
+source `dirname "$0"`/scripts-env-init.sh
 
 NAME="${LH_NAME}"
 TNS=${LH_TARGET_NAMESPACE}
@@ -28,26 +26,26 @@ update_k8s_secrets "longhorn-user" ${USER_NAME}
 update_k8s_secrets "longhorn-pass" ${USER_PASS}
 
 SEALED_SECRETS_PUB_KEY="pub-sealed-secrets-${CLUSTER_NAME}.pem"
-source ${HOME}/.oci/k8stests-secrets-keys || exit 1
-S3_SECRET_KEY="${secret_key}"
-S3_ACCESS_KEY="${access_key}"
+#source ${HOME}/.oci/k8stests-secrets-keys || exit 1
+#S3_SECRET_KEY="${secret_key}"
+#S3_ACCESS_KEY="${access_key}"
 
-cd ${CLUSTER_REPO_DIR}
+cd ${CLUSTER_REPO_DIR} &> /dev/null || { echo "No cluster repo dir!"; exit 1; }
 
 CL_DIR=`mkdir_ns ${BASE_DIR} ${TNS} ${FLUX_NS}`
 
 mkdir -p "${CL_DIR}/${NAME}"
 
-kubectl create secret generic "s3-secrets" \
-    --namespace "${LH_TARGET_NAMESPACE}" \
-    --from-literal=AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY}" \
-    --from-literal=AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY}" \
-    --dry-run=client -o yaml | kubeseal --cert="${SEALED_SECRETS_PUB_KEY}" \
-    --format=yaml > "${CL_DIR}/${NAME}/s3-secrets-sealed.yaml"
+#kubectl create secret generic "s3-secrets" \
+#    --namespace "${LH_TARGET_NAMESPACE}" \
+#    --from-literal=AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY}" \
+#    --from-literal=AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY}" \
+#    --dry-run=client -o yaml | kubeseal --cert="${SEALED_SECRETS_PUB_KEY}" \
+#    --format=yaml > "${CL_DIR}/${NAME}/s3-secrets-sealed.yaml"
 
 
-echo "Deploying ${NAME}"
-~/scripts/flux-create-helmrel.sh \
+echo "   ${BOLD}Deploying ${NAME}${NORMAL}"
+${SCRIPTS}/flux-create-helmrel.sh \
         "${LH_NAME}" \
         "${LH_VER}" \
         "${LH_RNAME}" \
@@ -62,11 +60,25 @@ update_repo ${NAME}
 
 wait_for_ready
 
-rm -f ${HOME}/auth
-echo "${USER_NAME}:$(openssl passwd -stdin -apr1 <<< ${USER_PASS})" >> ${HOME}/auth
-cat ${HOME}/auth
-kubectl -n longhorn-system create secret generic basic-auth --from-file=${HOME}/auth
-kubectl -n longhorn-system get secret basic-auth -o yaml > ${HOME}/.kube/longhorn-basic-auth.yaml
+echo "      ${WARNING}Making oci storage class non-default${NORMAL}"
+kubectl patch storageclass oci -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+kubectl patch storageclass oci -p '{"metadata": {"annotations":{"storageclass.beta.kubernetes.io/is-default-class":"false"}}}'
+
+if [ ! -z "${LH_S3_BACKUP_ACCESS_KEY}" ]; then
+	kubectl create secret generic "aws-s3-backup" \
+    	--namespace "${LH_NAMESPACE}" \
+    	--from-literal=AWS_ACCESS_KEY_ID="${LH_S3_BACKUP_ACCESS_KEY}" \
+    	--from-literal=AWS_SECRET_ACCESS_KEY="${LH_S3_BACKUP_SECRET_KEY}" \
+    	--dry-run=client -o yaml | kubeseal --cert="${SEALED_SECRETS_PUB_KEY}" \
+    	--format=yaml > "${CL_DIR}/${NAME}/aws-s3-backup-credentials-sealed.yaml"
+fi
+
+AUTH_FILE="$TMP_DIR/auth"
+rm -f $AUTH_FILE
+echo "${USER_NAME}:$(openssl passwd -stdin -apr1 <<< ${USER_PASS})" >> $AUTH_FILE
+cat $AUTH_FILE
+kubectl -n longhorn-system create secret generic basic-auth --from-file=$AUTH_FILE
+kubectl -n longhorn-system get secret basic-auth -o yaml > ${CONFIG}/longhorn-basic-auth.yaml
 
 cat >> "${CL_DIR}/${NAME}/${NAME}-ingress.yaml" <<EOF
 apiVersion: networking.k8s.io/v1
